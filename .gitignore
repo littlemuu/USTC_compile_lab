@@ -1,0 +1,19 @@
+# IDE
+.vscode/
+
+# C/C++ build output
+*.exe
+*.out
+*.o
+*.obj
+*.pdb
+*.ilk
+*.idb
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+
+# OS files
+.DS_Store
+Thumbs.db

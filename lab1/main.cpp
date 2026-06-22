@@ -33,6 +33,7 @@ enum class TokenType {
     Divide,
     LeftParen,
     RightParen,
+    Letter,
     End
 };
 

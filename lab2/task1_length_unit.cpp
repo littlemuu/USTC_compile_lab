@@ -1,6 +1,8 @@
 #include <string>
 #include <vector>
 #include <cctype>
+#include <iostream>
+#include <sstream>
 
 enum class LengthUnit {
     None,
@@ -107,6 +109,14 @@ bool validateLengthOperands(const std::vector<LengthValue>& values) {
     return true;
 }
 
+std::string lengthUnitToString(LengthUnit unit) {
+    if(unit==LengthUnit::Millimeter) return "mm";
+    if(unit==LengthUnit::Centimeter) return "cm";
+    if(unit==LengthUnit::Decimeter) return "dm";
+    if(unit==LengthUnit::Meter) return "m";
+    return "";
+}
+
 LengthResult evaluateLengthExpression(const std::string& expression) {
     // TODO: 解析表达式、执行校验、统一单位并计算加减运算。
     std::vector<std::string> tokens=tokenizeLengthExpression(expression);
@@ -116,15 +126,93 @@ LengthResult evaluateLengthExpression(const std::string& expression) {
         if(!isOperator(ch)) values.push_back(parseLengthLiteral(token));
     }
     if(!validateLengthOperands(values)) return{false,0.0,LengthUnit::None,"表达式无法计算。"};
+    
+    for(const auto& value:values){
+        if(value.hasUnit&&value.unit==LengthUnit::None) return {false,0.0,LengthUnit::None,"未知长度单位。"};
+    }
+
     LengthUnit min_unit=findSmallestUnit(values);
     for(auto& it:values){
         it.value=convertToUnit(it.value,it.unit,min_unit);
         it.unit=min_unit;
     }
-    return {false, 0.0, LengthUnit::None, ""};
+
+    std::vector<double> numberStack;
+    std::vector<char> operatorStack;
+    std::size_t valueIndex=0;  //记录当前访问的数字token在value里面的下标
+
+    //1dm-5cm+(1dm+1cm)
+    //1dm 
+    //-入栈
+    //1dm 5cm
+    //符号栈不为空也没有(，先计算前面的
+    //5cm
+    //+
+    //+(
+    //5cm 1dm
+    //+(+
+    //5cm 10cm 1cm
+    //右括号，计算
+    //5cm 11cm
+    //+
+    //16cm
+    auto applyToOperator=[&]()->bool{
+        if(operatorStack.empty()||numberStack.size()<2) return false;
+        double right=numberStack.back();
+        numberStack.pop_back();
+        double left=numberStack.back();
+        numberStack.pop_back();
+
+        char op=operatorStack.back();
+        operatorStack.pop_back();
+        if(op=='+') numberStack.push_back(left+right);
+        else if(op=='-') numberStack.push_back(left-right);
+        else return false;
+        return true;
+    };
+
+    for(const auto& token:tokens){
+        //处理符号
+        if(token[0]=='+'||token[0]=='-'){
+            while(!operatorStack.empty()&&operatorStack.back()!='('){
+                if(!applyToOperator()) return {false, 0.0, LengthUnit::None, "表达式格式错误。"};
+            }
+            operatorStack.push_back(token[0]);
+        }
+        else if(token[0]=='(') operatorStack.push_back(token[0]);
+        else if(token[0]==')'){
+            while(!operatorStack.empty()&&operatorStack.back()!='('){
+                if(!applyToOperator()) return {false, 0.0, LengthUnit::None, "表达式格式错误。"};
+            }
+            if(operatorStack.empty()) return {false, 0.0, LengthUnit::None, "括号不匹配。"};
+            operatorStack.pop_back(); //弹出左括号
+        }
+        else{
+            numberStack.push_back(values[valueIndex++].value);
+        }
+    }
+
+    while(!operatorStack.empty()){
+        if(operatorStack.back()=='(') return {false,0.0,LengthUnit::None,"括号不匹配。"};
+        if(!applyToOperator()) return {false,0.0,LengthUnit::None,"表达式格式错误。"};
+    }
+
+    if(numberStack.size()!=1) return {false, 0.0, LengthUnit::None, "表达式格式错误。"};
+    return {true, numberStack.back(), min_unit, ""};
 }
 
 std::string formatLengthResult(const LengthResult& result) {
     // TODO: 将结果数值及其单位名称格式化为字符串。
-    return {};
+    if(!result.ok) return result.message;
+    std::ostringstream oss;
+    oss<<result.value<<lengthUnitToString(result.unit);
+    return oss.str();
+}
+
+int main(){
+    std::string expression;
+    std::getline(std::cin,expression);
+    LengthResult result=evaluateLengthExpression(expression);
+    std::cout<<formatLengthResult(result)<<std::endl;
+    return 0;
 }
